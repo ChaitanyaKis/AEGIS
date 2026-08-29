@@ -31,10 +31,16 @@ FROM ghcr.io/astral-sh/uv:0.11.32 AS uvbin
 
 FROM python:3.13.15-slim AS base
 
-# uv is pinned by version and *mounted* rather than copied. The build then resolves
-# nothing — `uv sync --frozen` installs exactly what uv.lock records, so two builds a year
-# apart produce the same dependency set — and the 64 MB binary never enters a layer,
-# because a build tool has no business shipping to production.
+# uv is pinned by version, so the build resolves nothing: `uv sync --frozen` installs
+# exactly what uv.lock records, and two builds a year apart produce the same dependency set.
+#
+# Copied rather than mounted. `RUN --mount=` is BuildKit-only syntax, and Cloud Build's
+# `gcr.io/cloud-builders/docker` step runs the *legacy* builder, which fails on it with
+# "the --mount option requires BuildKit". A plain `COPY --from=<stage>` is understood by
+# both builders. It costs 64 MB in the final image; see the note at the bottom of this file
+# for how to get that back if it ever matters.
+COPY --from=uvbin /uv /usr/local/bin/uv
+
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
@@ -60,7 +66,7 @@ WORKDIR /app
 # UV_PYTHON_DOWNLOADS=never keeps uv on the base image's interpreter instead of quietly
 # fetching a second one into the image.
 COPY pyproject.toml uv.lock ./
-RUN --mount=from=uvbin,source=/uv,target=/usr/local/bin/uv     uv sync --frozen --no-dev --extra gemini --no-install-project
+RUN uv sync --frozen --no-dev --extra gemini --no-install-project
 
 # Then the project itself. --no-editable installs a real copy into the environment rather
 # than a link back to the build tree.
@@ -71,7 +77,7 @@ RUN --mount=from=uvbin,source=/uv,target=/usr/local/bin/uv     uv sync --frozen 
 # A build step that fails by producing nothing is worse than 2 MB.
 COPY README.md ./
 COPY src ./src
-RUN --mount=from=uvbin,source=/uv,target=/usr/local/bin/uv     uv sync --frozen --no-dev --extra gemini --no-editable
+RUN uv sync --frozen --no-dev --extra gemini --no-editable
 
 # tests/fleet.py is the declared organizational configuration the whole suite asserts
 # against, and it is what the service demonstrates. A separate copy written for the
@@ -86,7 +92,7 @@ FROM base AS test
 # `dev` is an *extra* in pyproject.toml, not a PEP 735 dependency group, so uv's default
 # dev handling does not reach it and it has to be named. (`--no-dev` in the base stage is
 # therefore belt-and-braces: it would matter only if a dev group were added later.)
-RUN --mount=from=uvbin,source=/uv,target=/usr/local/bin/uv     uv sync --frozen --extra gemini --extra dev --no-editable
+RUN uv sync --frozen --extra gemini --extra dev --no-editable
 
 # Two tests read docs/A2A.md and assert the documented policy still matches the code. They
 # belong to the suite, so the suite's image needs the document. The runtime image does not
@@ -111,3 +117,10 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD python -c "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:' + os.environ.get('PORT', '8080') + '/health', timeout=4)"
 
 CMD ["python", "run_service.py"]
+
+# --- note on image size ------------------------------------------------------------------
+#
+# `uv` (64 MB) ships in the final image because a legacy-builder-compatible `COPY` cannot be
+# undone in a later layer. To get it back, move the two `uv sync` steps into a dedicated
+# builder stage and `COPY --from=builder /app/.venv /app/.venv` into runtime -- also plain
+# Dockerfile syntax, but a larger change than getting a deployment unblocked warrants.
