@@ -109,6 +109,57 @@ def test_the_live_model_set_keeps_the_specialists_deterministic() -> None:
     assert "GeminiSpecialistModel" not in source
 
 
+def test_the_live_branch_really_builds_a_gemini_commander(
+    live_environment: str, no_network: None
+) -> None:
+    """The one branch the rest of the suite only ever refuses.
+
+    Everything else about live mode is asserted from the ``409`` side: the gate closed, the
+    factory never called. This drives the other arm -- through the real ``build_service``,
+    the real closure it creates, and the real environment variables a deployment sets --
+    and stops one construction short of a request.
+
+    Nothing is mocked. Building an SDK client contacts nothing (the client is lazy; the
+    same property ``tests/integrations/test_sdk_shape.py::TestRealClientConstruction``
+    already relies on), and ``no_network`` turns that from a relied-upon property into an
+    asserted one.
+
+    What it does not prove: that a request would succeed. Only a credential and a live call
+    establish that, and neither exists here.
+    """
+    pytest.importorskip("google.genai", reason="google-genai is an optional extra")
+
+    from aegis.integrations.gemini import DEFAULT_GEMINI_MODEL, GeminiCommanderModel
+
+    service = run_service.build_service(
+        allow_live=run_service.allow_live_from_env(), clock=fixed_clock
+    )
+
+    # The gate opened from the environment alone -- both conditions, read not injected.
+    assert service.health().payload["live_mode"] == {
+        "enabled": True,
+        "credentials_present": True,
+        "available": True,
+    }
+
+    # The closure `build_service` actually created, on the LIVE arm. Read, not replaced.
+    models = service._model_factory(IncidentMode.LIVE)
+
+    assert isinstance(models.commander, GeminiCommanderModel)
+    assert type(models.commander._client).__name__ == "Client", "a real SDK client, not a fake"
+    assert models.commander_model == DEFAULT_GEMINI_MODEL
+    assert models.commander.config.use_vertex is False, "the API-key branch, as configured"
+
+    # And the documented asymmetry: one live variable, not five.
+    assert models.specialist_model == "deterministic-test-model"
+    assert not isinstance(models.specialist_for("diagnostic"), GeminiCommanderModel)
+
+    # The key travelled into the SDK and nowhere else.
+    assert live_environment not in json.dumps(service.health().payload)
+    assert live_environment not in repr(models.commander)
+    assert live_environment not in json.dumps(models.commander.describe())
+
+
 def test_check_prints_health_and_exits_zero(capsys: pytest.CaptureFixture[str]) -> None:
     """What the Docker health check and CI run. Builds the whole service, binds nothing."""
     assert run_service.main(["--check"]) == 0
