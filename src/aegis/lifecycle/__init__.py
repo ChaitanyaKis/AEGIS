@@ -90,6 +90,11 @@ from aegis.lifecycle.restriction import (
     RestrictionScope,
     RestrictionVerdict,
 )
+from aegis.lifecycle.scope import (
+    ResourceScopeDecision,
+    ResourceScopeVerdict,
+    ResourceScopeVerifier,
+)
 from aegis.lifecycle.state import (
     LIFECYCLE_GENESIS_DIGEST,
     BreakerSnapshot,
@@ -148,6 +153,9 @@ __all__ = [
     "ProbeAlreadyInFlight",
     "RestrictionScope",
     "RestrictionVerdict",
+    "ResourceScopeDecision",
+    "ResourceScopeVerdict",
+    "ResourceScopeVerifier",
     "StateIntegrityReport",
     "StateRecordKind",
     "StopReason",

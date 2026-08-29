@@ -50,7 +50,7 @@ def poisoned_memory() -> dict:
             incident_id=INCIDENT_A, action=subject, verification=verification(subject)
         ),
     )
-    return MemoryRetrieval(store, clock=fixed_clock).for_incident(INCIDENT_B).as_model_data()
+    return MemoryRetrieval(store, clock=fixed_clock).for_incident(INCIDENT_B, requesting_agent="commander").as_model_data()
 
 
 def build_context(memory: dict) -> CommanderContext:

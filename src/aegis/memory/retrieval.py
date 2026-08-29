@@ -43,7 +43,9 @@ class MemoryRetrieval:
         self._store = store
         self._clock = clock
 
-    def retrieve(self, query: MemoryQuery | None = None) -> MemoryContext:
+    def retrieve(
+        self, query: MemoryQuery | None = None, requesting_agent: str | None = None
+    ) -> MemoryContext:
         """Authoritative memory matching ``query``, as historical context.
 
         Revoked and candidate records are never included — that is enforced by the store's
@@ -52,12 +54,16 @@ class MemoryRetrieval:
         """
         query = query if query is not None else MemoryQuery()
         now = self._clock()
-        records = tuple(
-            _as_retrieved(record, now)
-            for record in self._store.query(query)
-            if record.provenance is not None
-        )
-        return MemoryContext(query=query, records=records, retrieved_at=now)
+        
+        records = []
+        for record in self._store.query(query):
+            if record.provenance is None:
+                continue
+            if record.namespace is not None and requesting_agent is not None and record.namespace != requesting_agent:
+                continue
+            records.append(_as_retrieved(record, now))
+            
+        return MemoryContext(query=query, records=tuple(records), retrieved_at=now)
 
     def for_incident(
         self,
@@ -65,6 +71,7 @@ class MemoryRetrieval:
         *,
         resource: str | None = None,
         limit: int | None = None,
+        requesting_agent: str | None = None,
     ) -> MemoryContext:
         """History relevant to an incident, excluding the incident's own memory.
 
@@ -73,7 +80,8 @@ class MemoryRetrieval:
         how a conclusion becomes its own supporting evidence.
         """
         return self.retrieve(
-            MemoryQuery(resource=resource, exclude_incident=incident_id, limit=limit)
+            MemoryQuery(resource=resource, exclude_incident=incident_id, limit=limit),
+            requesting_agent=requesting_agent,
         )
 
     def __repr__(self) -> str:

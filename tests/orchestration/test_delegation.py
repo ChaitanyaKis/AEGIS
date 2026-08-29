@@ -45,6 +45,7 @@ from aegis.orchestration import (
     OrchestrationOutcome,
     SpecialistRegistry,
 )
+from aegis.registry import AgentRegistry, AgentVersion
 from tests.fleet import FIXED_EVALUATION_TIME
 from tests.orchestration.conftest import (
     INJECTION,
@@ -204,6 +205,65 @@ def test_a_commander_delegating_to_an_unknown_agent_does_not_stall(incident) -> 
         for entry in run.context.history
     ), [entry.note for entry in run.context.history]
     assert run.execution is None
+
+
+# --- registry eligibility -------------------------------------------------------------
+
+
+def _dummy_registration_kwargs(agent_id: str) -> dict:
+    return {
+        "agent_id": agent_id,
+        "version": "1.0.0",
+        "name": agent_id.title(),
+        "description": "Test agent",
+        "owner": "test-owner",
+        "department": "test-department",
+        "identity": f"serviceAccount:test@{agent_id}.iam",
+    }
+
+
+def test_registry_eligibility_refuses_suspended_specialist() -> None:
+    registry = build_specialists(EnterpriseWorld())
+    agent_reg = AgentRegistry()
+    # Register and suspend the agent
+    agent_reg.register(**_dummy_registration_kwargs("diagnostic"))
+    agent_reg.publish("diagnostic", "1.0.0", actor="test")
+    agent_reg.approve("diagnostic", "1.0.0", approver="test")
+    agent_reg.activate("diagnostic", "1.0.0", actor="test")
+    agent_reg.suspend("diagnostic", "1.0.0", actor="test", reason="security concern")
+    
+    registry._agent_registry = agent_reg
+    
+    result = registry.dispatch("commander", "diagnostic", _task(TaskType.DIAGNOSE_SERVICE))
+    assert result.outcome is DelegationOutcome.REGISTRY_INELIGIBLE
+    assert result.finding is None
+    assert "suspended" in result.detail.lower() or "security concern" in result.detail
+
+
+def test_registry_eligibility_refuses_unknown_agent_when_registry_is_present() -> None:
+    registry = build_specialists(EnterpriseWorld())
+    agent_reg = AgentRegistry()
+    registry._agent_registry = agent_reg
+    
+    # "diagnostic" is in the fleet but not registered in the agent_reg
+    result = registry.dispatch("commander", "diagnostic", _task(TaskType.DIAGNOSE_SERVICE))
+    assert result.outcome is DelegationOutcome.REGISTRY_INELIGIBLE
+    assert result.finding is None
+    assert "unknown" in result.detail.lower()
+
+
+def test_registry_eligibility_allows_approved_agent() -> None:
+    registry = build_specialists(EnterpriseWorld())
+    agent_reg = AgentRegistry()
+    agent_reg.register(**_dummy_registration_kwargs("diagnostic"))
+    agent_reg.publish("diagnostic", "1.0.0", actor="test")
+    agent_reg.approve("diagnostic", "1.0.0", approver="test")
+    agent_reg.activate("diagnostic", "1.0.0", actor="test")
+    registry._agent_registry = agent_reg
+    
+    result = registry.dispatch("commander", "diagnostic", _task(TaskType.DIAGNOSE_SERVICE))
+    assert result.outcome is DelegationOutcome.COMPLETED
+    assert result.finding is not None
 
 
 # --- proposal authority --------------------------------------------------------------

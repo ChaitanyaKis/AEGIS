@@ -104,6 +104,9 @@ class MemoryCandidate(DomainModel):
     summary: NonEmptyStr
     """One line for a human reading the trail. Never parsed, never matched against."""
 
+    namespace: str | None = None
+    """The isolation boundary. Memory written with a namespace is only returned to the same namespace."""
+
     supporting_evidence: tuple[EvidenceRef, ...] = Field(default_factory=tuple)
     verification_id: Identifier | None = None
     action_id: Identifier | None = None
@@ -131,6 +134,7 @@ class MemoryRecord(DomainModel):
     agent_id: AgentRef
     content: Mapping[str, JsonValue] = Field(default_factory=dict)
     summary: NonEmptyStr
+    namespace: str | None = None
     supporting_evidence: tuple[EvidenceRef, ...] = Field(default_factory=tuple)
     provenance: MemoryProvenance | None = None
     """Present exactly when the record is authoritative, or was before revocation."""
@@ -193,6 +197,11 @@ class MemoryQuery(DomainModel):
     incident_id: IncidentRef | None = None
     memory_type: MemoryType | None = None
     agent_id: AgentRef | None = None
+    owner_agent: AgentRef | None = None
+    """The agent that wrote this memory."""
+    namespace: str | None = None
+    """The isolation boundary. Memory written with a namespace is only returned to the same namespace."""
+    
     limit: int | None = Field(default=None, ge=1)
     """Cap on returned records, applied after deterministic ordering."""
 

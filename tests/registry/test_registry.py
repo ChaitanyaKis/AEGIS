@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 import pytest
 
@@ -12,15 +12,11 @@ from aegis.registry import (
     IllegalRegistryTransition,
     RegistryRefusal,
     RegistryStatus,
-    UnknownAgentVersion,
-    UnknownRegisteredAgent,
 )
 
 
-from datetime import datetime, timezone
-
 def _clock() -> datetime:
-    return datetime(2026, 8, 29, 12, 0, 0, tzinfo=timezone.utc)
+    return datetime(2026, 8, 29, 12, 0, 0, tzinfo=UTC)
 
 
 def test_registration_starts_at_draft_and_pending() -> None:

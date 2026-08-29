@@ -31,6 +31,8 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections.abc import Callable
+from datetime import datetime
 
 from tests.fleet import (
     BUSINESS_IMPACT,
@@ -69,9 +71,28 @@ INJECTION_SOURCE = (
 """The Part 6.A adversarial incident. Untrusted content, carried in the data channel."""
 
 
-def build_specialists(world: EnterpriseWorld, registry, model_for) -> SpecialistRegistry:
-    """The four specialists, each with its own identity, toolbox and live model."""
-    policy = PolicyEngine(registry, clock=utc_now)
+def build_specialists(
+    world: EnterpriseWorld,
+    registry,
+    model_for,
+    *,
+    clock: Callable[[], datetime] = utc_now,
+) -> SpecialistRegistry:
+    """The four specialists, each with its own identity, toolbox and live model.
+
+    Args:
+        clock: Timestamp source for the specialists, their toolboxes and their policy
+            engine. Defaults to the wall clock, which is what a live run wants.
+
+    The clock is a parameter because it was previously pinned to :func:`utc_now` here
+    while every caller was free to inject one everywhere else, so a caller that pinned
+    time still got wall-clock observation ids of the form
+    ``obs-telemetry-payment-api-20260829T090553Z``. Two runs that straddled a second
+    boundary then produced different evidence ids, a different A2A seal and a different
+    audit head digest -- reproducibility that held almost always and failed a few percent
+    of the time, which is the worst way for it to fail.
+    """
+    policy = PolicyEngine(registry, clock=clock)
     tools = ToolRegistry()
     agents = []
     for agent_class, record in SPECIALIST_FLEET:
@@ -81,9 +102,9 @@ def build_specialists(world: EnterpriseWorld, registry, model_for) -> Specialist
             world,
             record,
             allowed_tools=SPECIALIST_TOOLS[agent_class.agent_id],
-            clock=utc_now,
+            clock=clock,
         )
-        agents.append(agent_class(model_for(agent_class.agent_id), toolbox=toolbox, clock=utc_now))
+        agents.append(agent_class(model_for(agent_class.agent_id), toolbox=toolbox, clock=clock))
     return SpecialistRegistry(tuple(agents))
 
 

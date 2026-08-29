@@ -31,6 +31,7 @@ from aegis.agents.specialists import (
     SpecialistTask,
 )
 from aegis.core.domain import DomainModel, NonEmptyStr
+from aegis.registry import AgentRegistry
 
 __all__ = [
     "DELEGATION_MATRIX",
@@ -38,6 +39,7 @@ __all__ = [
     "DelegationResult",
     "SpecialistRegistry",
 ]
+
 
 DELEGATION_MATRIX: Mapping[str, frozenset[str]] = MappingProxyType(
     {
@@ -65,6 +67,14 @@ class DelegationOutcome(StrEnum):
     FAILED = "FAILED"
     REJECTED = "REJECTED"
     """The specialist produced something outside its declared authority."""
+
+    REGISTRY_INELIGIBLE = "REGISTRY_INELIGIBLE"
+    """The agent registry refused this agent (suspended, revoked, not approved, etc.).
+
+    Distinct from UNKNOWN_AGENT (not in the local specialist fleet) and NOT_PERMITTED
+    (matrix has no edge): an agent can be locally registered and matrix-permitted and
+    still be administratively ineligible. Either can refuse independently.
+    """
 
 
 class DelegationResult(DomainModel):
@@ -97,6 +107,12 @@ class SpecialistRegistry:
     Args:
         specialists: Constructed specialist agents, keyed by their declared ``agent_id``.
         matrix: Permitted delegation edges. Defaults to :data:`DELEGATION_MATRIX`.
+        agent_registry: Optional governed agent registry. When supplied, every dispatch
+            checks registry eligibility *before* the specialist runs. An ineligible agent
+            (suspended, revoked, awaiting approval) is refused with
+            :attr:`DelegationOutcome.REGISTRY_INELIGIBLE`, regardless of what the local
+            fleet contains or what the matrix permits. When absent, the pre-existing
+            fleet + matrix checks apply without registry enforcement.
 
     Static: no discovery, no dynamic class loading, no model-controlled imports. Every
     entry was constructed by the application before any model ran.
@@ -107,6 +123,7 @@ class SpecialistRegistry:
         specialists: tuple[SpecialistAgent, ...],
         *,
         matrix: Mapping[str, frozenset[str]] = DELEGATION_MATRIX,
+        agent_registry: AgentRegistry | None = None,
     ) -> None:
         self._agents: dict[str, SpecialistAgent] = {}
         for specialist in specialists:
@@ -114,6 +131,7 @@ class SpecialistRegistry:
                 raise ValueError(f"duplicate specialist: {specialist.agent_id!r}")
             self._agents[specialist.agent_id] = specialist
         self._matrix = matrix
+        self._agent_registry = agent_registry
 
     def get(self, agent_id: str) -> SpecialistAgent | None:
         """The specialist with this exact id, or ``None``."""
@@ -137,8 +155,17 @@ class SpecialistRegistry:
     ) -> DelegationResult:
         """Run one delegated task, refusing anything the configuration does not permit.
 
-        Checks in order: the target exists, the edge is permitted, the target handles the
-        task type. Only then does a specialist run.
+        Checks in order:
+        1. the target exists in the local fleet
+        2. the matrix has an edge from delegating_agent to target
+        3. the target handles the requested task type
+        4. the agent registry (if wired) considers the target eligible
+        5. the specialist runs
+
+        Step 4 is independent of steps 1-3: an agent can be fleet-registered,
+        matrix-permitted and task-capable and still be administratively ineligible
+        (suspended, revoked, awaiting approval). Both the fleet and the registry must agree
+        before any work is dispatched.
         """
 
         def refuse(outcome: DelegationOutcome, detail: str) -> DelegationResult:
@@ -168,6 +195,18 @@ class SpecialistRegistry:
                 DelegationOutcome.UNKNOWN_TASK,
                 f"{target_agent_id} handles {specialist.task_type}, not {task.task_type}",
             )
+
+        # Registry eligibility check — administrative standing.
+        # Runs after fleet+matrix checks so the refusal message names the most
+        # informative reason ("unknown agent" is more precise than "registry unknown").
+        if self._agent_registry is not None:
+            verdict = self._agent_registry.eligibility(target_agent_id)
+            if not verdict.eligible:
+                return refuse(
+                    DelegationOutcome.REGISTRY_INELIGIBLE,
+                    f"agent registry refused {target_agent_id!r}: {verdict.detail} "
+                    f"(refusal={verdict.refusal})",
+                )
 
         result = specialist.run(task)
         outcome = {

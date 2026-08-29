@@ -72,6 +72,7 @@ class _DigestPayload(DomainModel):
     revocation_reason: NonEmptyStr | None
     revokes: NonEmptyStr | None
     sequence: int = Field(ge=0)
+    namespace: str | None
     source: MemorySource
     status: MemoryStatus
     summary: NonEmptyStr
@@ -88,6 +89,7 @@ def memory_digest(
     agent_id: str,
     content: Mapping[str, JsonValue],
     summary: str,
+    namespace: str | None,
     supporting_evidence: Sequence[str],
     provenance: MemoryProvenance | None,
     source: MemorySource,
@@ -117,6 +119,7 @@ def memory_digest(
             revocation_reason=revocation_reason,
             revokes=revokes,
             sequence=sequence,
+            namespace=namespace,
             source=source,
             status=status,
             summary=summary,
@@ -137,6 +140,7 @@ def record_digest(record: MemoryRecord) -> str:
         agent_id=record.agent_id,
         content=record.content,
         summary=record.summary,
+        namespace=record.namespace,
         supporting_evidence=record.supporting_evidence,
         provenance=record.provenance,
         source=record.source,

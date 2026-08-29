@@ -184,6 +184,10 @@ class MemoryStore:
             return False
         if query.agent_id is not None and record.agent_id != query.agent_id:
             return False
+        if query.owner_agent is not None and record.agent_id != query.owner_agent:
+            return False
+        if query.namespace is not None and record.namespace != query.namespace:
+            return False
         if query.resource is not None:
             resource = provenance.resource if provenance else None
             if resource != query.resource:
@@ -208,6 +212,7 @@ class MemoryStore:
             agent_id=candidate.agent_id,
             content=candidate.content,
             summary=candidate.summary,
+            namespace=candidate.namespace,
             supporting_evidence=candidate.supporting_evidence,
             provenance=None,
             source=candidate.source,
@@ -232,6 +237,7 @@ class MemoryStore:
             agent_id=candidate.agent_id,
             content=candidate.content,
             summary=candidate.summary,
+            namespace=candidate.namespace,
             supporting_evidence=provenance.evidence_ids,
             provenance=provenance,
             source=MemorySource.VERIFIED_OUTCOME,
@@ -255,6 +261,7 @@ class MemoryStore:
             agent_id=actor,
             content={},
             summary=f"revoked {memory_id}: {reason}",
+            namespace=target.namespace,
             supporting_evidence=(),
             provenance=None,
             source=target.source,
@@ -273,6 +280,7 @@ class MemoryStore:
         agent_id: str,
         content,
         summary: str,
+        namespace: str | None,
         supporting_evidence: Sequence[str],
         provenance: MemoryProvenance | None,
         source: MemorySource,
@@ -295,6 +303,7 @@ class MemoryStore:
             agent_id=agent_id,
             content=content,
             summary=summary,
+            namespace=namespace,
             supporting_evidence=evidence,
             provenance=provenance,
             source=source,
@@ -312,6 +321,7 @@ class MemoryStore:
             agent_id=agent_id,
             content=content,
             summary=summary,
+            namespace=namespace,
             supporting_evidence=evidence,
             provenance=provenance,
             source=source,

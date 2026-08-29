@@ -80,17 +80,17 @@ def allow_live_from_env(env: dict[str, str] | None = None) -> bool:
     return str(source.get(ALLOW_LIVE_ENV_VAR, "")).strip().lower() in {"1", "true", "yes"}
 
 
-def deterministic_models() -> ModelSet:
+def deterministic_models(*, clock: Callable[[], datetime] = utc_now) -> ModelSet:
     """The rule-based fleet. **DETERMINISTIC TEST MODELS** — not language models."""
     return ModelSet(
         commander=DeterministicCommanderModel(),
-        specialist_for=lambda agent_id: DETERMINISTIC_SPECIALIST_MODELS[agent_id](clock=utc_now),
+        specialist_for=lambda agent_id: DETERMINISTIC_SPECIALIST_MODELS[agent_id](clock=clock),
         commander_model="deterministic-test-model",
         specialist_model="deterministic-test-model",
     )
 
 
-def live_models() -> ModelSet:
+def live_models(*, clock: Callable[[], datetime] = utc_now) -> ModelSet:
     """A real Gemini Commander with deterministic specialists.
 
     Imported here rather than at module scope so that a deterministic deployment never
@@ -102,7 +102,7 @@ def live_models() -> ModelSet:
     config = GeminiProviderConfig.from_env()
     return ModelSet(
         commander=GeminiCommanderModel(config=config),
-        specialist_for=lambda agent_id: DETERMINISTIC_SPECIALIST_MODELS[agent_id](clock=utc_now),
+        specialist_for=lambda agent_id: DETERMINISTIC_SPECIALIST_MODELS[agent_id](clock=clock),
         commander_model=config.model,
         specialist_model="deterministic-test-model",
     )
@@ -120,10 +120,15 @@ def build_service(
     registry = build_registry()
 
     def model_factory(mode: IncidentMode) -> ModelSet:
-        return live_models() if mode is IncidentMode.LIVE else deterministic_models()
+        # The clock reaches the specialist models too. It used to stop at the orchestrator,
+        # so a pinned clock still produced wall-clock observation ids and two identical
+        # requests could disagree on their audit head digest.
+        if mode is IncidentMode.LIVE:
+            return live_models(clock=clock)
+        return deterministic_models(clock=clock)
 
     def specialist_factory(world: EnterpriseWorld, models: ModelSet) -> SpecialistRegistry:
-        return build_specialists(world, registry, models.specialist_for)
+        return build_specialists(world, registry, models.specialist_for, clock=clock)
 
     return AegisService(
         registry=registry,

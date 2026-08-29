@@ -136,6 +136,7 @@ class TestChainConstruction:
             agent_id=record.agent_id,
             content=record.content,
             summary=record.summary,
+            namespace=record.namespace,
             supporting_evidence=record.supporting_evidence,
             provenance=record.provenance,
             source=record.source,

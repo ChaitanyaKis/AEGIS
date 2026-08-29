@@ -155,7 +155,7 @@ def seed_memory(
 
     payload = (
         MemoryRetrieval(store, clock=clock)
-        .for_incident(f"INC-{scenario.scenario_id}")
+        .for_incident(f"INC-{scenario.scenario_id}", requesting_agent="commander")
         .as_model_data()
     )
     return store, payload, poisoned
