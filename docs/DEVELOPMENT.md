@@ -11,7 +11,8 @@ AEGIS/
 ├── pyproject.toml             dependencies, pytest and ruff configuration
 ├── README.md
 ├── docs/
-│   └── DEVELOPMENT.md         this file
+│   ├── DEVELOPMENT.md         this file
+│   └── DEPLOYMENT.md          HTTP surface, Docker, Cloud Run, and what is actually Google
 ├── src/aegis/
 │   ├── core/                  deterministic control plane (trust zone C, authoritative)
 │   │   ├── domain/            domain contracts
@@ -36,11 +37,14 @@ AEGIS/
 │   ├── memory/                persistent organizational memory: admission, provenance,
 │   │                          integrity, retrieval, persistence
 │   ├── lifecycle/             bounded execution, retry accounting, durable breaker
-│   └── evaluation/            the benchmark and the adversarial matrix: scenario contract,
-│                              oracle, runner, metrics, attack classes
+│   ├── evaluation/            the benchmark and the adversarial matrix: scenario contract,
+│   │                          oracle, runner, metrics, attack classes
+│   └── service/               the HTTP surface: an adapter, no governance of its own
+├── Dockerfile                 container image for Cloud Run
 ├── run_benchmark.py           benchmark entry point; exits non-zero when the suite fails
 ├── run_adversarial_report.py  adversarial matrix; exits non-zero if any attack is uncontained
 ├── run_live_incident.py       Track B: one incident against a real model provider
+├── run_service.py             serve the control plane over HTTP; composition root
 └── tests/
     ├── fleet.py               fixed capability set and agent fleet shared by suites
     ├── domain/                deterministic unit tests for the contracts
@@ -953,9 +957,50 @@ Currently populated:
 - `gemini.py` — the Gemini provider. The **only** module in AEGIS permitted to import
   `google`, asserted structurally by test across every other package.
 
-**No live Google integration has been executed.** `gemini.py` is implemented and its API
-surface was verified against the installed SDK; the transport itself has never run. See
-[`docs/PROVIDER.md`](PROVIDER.md) for the precise claim and its limits.
+`gemini.py` is implemented, its API surface was verified against the installed SDK, and the
+transport **has** run: two incidents were driven end to end by `gemini-2.5-flash` on Vertex
+AI. Two runs are two observations, and nothing anywhere derives a reliability claim from
+them. See [`docs/PROVIDER.md`](PROVIDER.md) for the precise claim and its limits.
+
+Everything else in the list above remains **architectural intent**. ADK is not a
+dependency, is not imported and is not claimed; neither are Agent Registry, Agent Identity,
+Agent Gateway, Model Armor, Memory Bank or Agent Observability. The named seams exist so an
+adapter could be written; none has been.
+
+## 5a. The HTTP surface and the container
+
+[`src/aegis/service/`](../src/aegis/service/) is an **adapter**, not a second control
+plane. It exists because a container needs something to listen on a port.
+
+- [`app.py`](../src/aegis/service/app.py) — pure request handling. Bytes and a route in, a
+  status and a JSON payload out, with no HTTP library anywhere in it. That split is what
+  lets every governance assertion be made against a plain function call.
+- [`server.py`](../src/aegis/service/server.py) — a stdlib `ThreadingHTTPServer` binding
+  `$PORT`. No framework, so the deployment adds no dependency.
+- [`run_service.py`](../run_service.py) — the composition root, alongside
+  `run_benchmark.py` and `run_live_incident.py`. It supplies the same `tests.fleet` roster
+  the benchmark measures.
+
+Three routes: `GET /`, `GET /health`, `POST /incident`. The incident route reaches the
+enterprise through `run_live_incident()` — the same entrypoint the Track B CLI uses — so
+the governance path is the orchestrator's, unmodified.
+
+What the layer cannot do, checked structurally in
+[`tests/service/test_governance_boundary.py`](../tests/service/test_governance_boundary.py):
+it never imports `ActionExecutor`, `ApprovalEngine`, `PolicyEngine` or any lifecycle
+component; it assigns to none of the governance constants; and `IncidentRequest` is a
+closed five-field contract, so a body naming `capability`, `approval`, `authorization`,
+`gate`, `policy_decision` or `agent_id` is a `400` rather than a privilege.
+
+Deterministic by default — no credentials, no network, no spend. Live Gemini needs both
+`AEGIS_SERVICE_ALLOW_LIVE=true` and configured credentials, or the request is a `409` and
+no client is built.
+
+The container image builds from `uv.lock` (reproducible), runs non-root, honours `$PORT`,
+and has two targets: `runtime` (the default, no test tooling) and `test` (adds pytest and
+ruff). Both have been built and exercised locally; no Cloud Run deployment has been
+performed. [`DEPLOYMENT.md`](DEPLOYMENT.md) has the full path, the measured results and
+troubleshooting for Docker Hub pull failures.
 
 ## 6. Running the tests
 
@@ -963,9 +1008,10 @@ surface was verified against the installed SDK; the transport itself has never r
 uv venv --python 3.13          # once
 uv pip install -e ".[dev]"     # once
 
-uv run pytest                   # full suite -- 3888 tests, ~62s
+uv run pytest                   # full suite -- 4052 tests, ~69s
 uv run pytest tests/evaluation  # the benchmark and the evaluator's own tests
 uv run pytest tests/adversarial # the 8 attack classes
+uv run pytest tests/service     # the HTTP surface (offline; loopback socket only)
 uv run ruff format .            # formatter
 uv run ruff check .             # linter
 ```

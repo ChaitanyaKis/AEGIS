@@ -326,7 +326,7 @@ audit failures:             0
 uv run pytest
 ```
 ```text
-3888 passed in ~62s
+4052 passed in ~69s
 ```
 
 ---
@@ -458,6 +458,67 @@ type and task type to the prompt text. Full account in
 
 It is worth telling, because a live trial whose only output is "it worked" has told you very
 little.
+
+---
+
+## Optional — the same control plane over HTTP, on Cloud Run
+
+Use this when the demonstration needs to show a running backend rather than a terminal.
+
+**The claim to make, and not to exceed:** the HTTP layer is an *adapter*. It adds no
+governance and removes none — `POST /incident` reaches the enterprise through the same
+`run_live_incident()` entrypoint the CLI uses, and there is no route that reaches the
+executor and no request field that names a capability, an approval or a gate.
+
+Locally:
+
+```powershell
+uv run python run_service.py
+```
+
+```powershell
+curl.exe http://127.0.0.1:8080/health
+```
+
+`/health` reports the governance configuration the *running process* is actually enforcing
+— the proposal-authority map, the Commander's tool set and the delegation matrix, read from
+the modules that own them. That is worth pausing on: it is the same table from Step 2, read
+out of a live service rather than a document.
+
+```powershell
+curl.exe -s -X POST http://127.0.0.1:8080/incident `
+  -H "Content-Type: application/json" `
+  -d '{\"source\": \"monitoring.alerting: payment-api error rate 37% since deployment v4.8\"}'
+```
+
+> `"governed": true`, `"verification": "VERIFIED"`, `"gates_consumed": 1`. The same chain as
+> Step 4, over a socket.
+
+Then the refusal, which is the more interesting half:
+
+```powershell
+curl.exe -s -X POST http://127.0.0.1:8080/incident `
+  -H "Content-Type: application/json" `
+  -d '{\"source\": \"monitoring.alerting: payment-api error rate 37%\", \"approve\": false}'
+```
+
+> Nothing executed, nothing resolved, no gate spent. The human said no and that was the end
+> of it.
+
+The same thing in a container, which is what Cloud Run runs:
+
+```powershell
+docker build -t aegis:local .
+docker run --rm -p 8080:8080 aegis:local
+```
+
+On Cloud Run, `docs/DEPLOYMENT.md` has the commands. **Say plainly what has and has not
+happened**: the container image has been built and verified locally — it serves all three
+endpoints and passes 302/302 benchmark scenarios and 25/25 adversarial attacks inside the
+container — but **no Cloud Run deployment has been performed**. If you deploy before the
+recording, show the real URL and say so; if you do not, run the container locally and say
+that instead. Do not narrate a deployment that did not occur — the whole project is an
+argument for not doing that.
 
 ---
 

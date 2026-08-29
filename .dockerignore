@@ -1,0 +1,78 @@
+# Keep the build context small and keep local secrets out of the image.
+#
+# Note on patterns: a bare `.env` matches only the repository root. Every credential rule
+# below is written `**/...` as well, because a key checked into a subdirectory is exactly
+# the one nobody remembers is there.
+
+.git
+.gitignore
+.github
+
+# Virtual environments — the image builds its own at /app/.venv.
+.venv
+venv
+env
+**/.venv
+
+__pycache__
+**/__pycache__
+*.py[cod]
+*.egg-info
+**/*.egg-info
+.pytest_cache
+**/.pytest_cache
+.ruff_cache
+.mypy_cache
+.coverage
+htmlcov
+build
+dist
+
+# --- never build a credential into an image -------------------------------------------
+.env
+.env.*
+**/.env
+**/.env.*
+*.pem
+**/*.pem
+*.key
+**/*.key
+*.p12
+**/*.p12
+*.pfx
+**/*.pfx
+*-key.json
+**/*-key.json
+service-account*.json
+**/service-account*.json
+application_default_credentials.json
+**/application_default_credentials.json
+.netrc
+**/.netrc
+.aws
+.config
+gha-creds-*.json
+
+# --- not needed at runtime -------------------------------------------------------------
+# The runtime image copies README.md (pyproject references it) and claude.md (the project
+# constitution). `docs/` is *not* excluded, but only the test stage copies it: two tests
+# assert that docs/A2A.md still says what the code does, and a test that cannot read the
+# document it audits does not pass — it errors, which is a different and less useful thing.
+# `*.md` matches root-level markdown only, so docs/*.md is unaffected by it.
+DEMO.md
+*.md
+!README.md
+!claude.md
+
+Dockerfile
+.dockerignore
+
+captures
+*.capture.json
+runs
+trace.json
+
+.idea
+.vscode
+.DS_Store
+Thumbs.db

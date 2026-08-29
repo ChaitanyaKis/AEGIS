@@ -144,6 +144,82 @@ or configure Vertex AI with GOOGLE_GENAI_USE_VERTEXAI=true and GOOGLE_CLOUD_PROJ
 
 Not at first use, and never by degrading into something that answers.
 
+### 3.1 Choosing the model — including a newer Gemini
+
+The model id is **configuration, not code**. It is resolved once, in precedence order:
+
+```text
+run_live_incident.py --model      highest
+AEGIS_GEMINI_MODEL                environment
+DEFAULT_GEMINI_MODEL              src/aegis/integrations/gemini.py:81
+```
+
+and then travels a single path with no branch and no second source:
+
+```text
+GeminiProviderConfig.from_env()        gemini.py:180   source.get(MODEL_ENV_VAR) or DEFAULT
+  -> config.model                      gemini.py:165
+  -> _GeminiModel.__init__             gemini.py:243   self.model = self.config.model
+  -> models.generate_content(model=…)  gemini.py:332   the only call site
+```
+
+**The id is never validated against a hardcoded list.** No allow-list, no prefix check, no
+pattern. Any string is passed through to the SDK verbatim, and an id the API does not
+recognise fails at the API and surfaces as `ModelUnavailable` — fail-closed, and with the
+provider's own reason rather than a guess made here.
+
+Two consequences worth stating plainly:
+
+- **Moving to Gemini 3.5 or newer requires no code change.** Setting `AEGIS_GEMINI_MODEL`
+  (or passing `--model`) is sufficient, locally and on Cloud Run.
+- **No test hardcodes the current default.**
+  `test_configuration_defaults_when_the_environment_is_empty` compares against the
+  `DEFAULT_GEMINI_MODEL` *symbol*, so changing the constant breaks nothing.
+
+#### Confirming an id before pinning it
+
+The default is still `gemini-2.5-flash`, and it has deliberately **not** been changed to a
+newer id here: no model id has been confirmed against a live API from this project, and
+`claude.md` section 17 forbids inventing one. To confirm one:
+
+```powershell
+# list what your project can actually reach — this is a real API call
+uv run python -c "from google import genai; c = genai.Client(vertexai=True, project='YOUR_PROJECT', location='us-central1'); [print(m.name) for m in c.models.list()]"
+```
+
+or read them from the Vertex AI Model Garden console for your project and region.
+
+Then validate the id with **one** Commander call — no orchestrator, no enterprise, no
+executor, and structurally incapable of mutating anything:
+
+```powershell
+$env:AEGIS_GEMINI_MODEL = "<candidate-model-id>"
+uv run python -c "from aegis.integrations.gemini import GeminiCommanderModel; from aegis.agents.model import ModelRequest; p = GeminiCommanderModel.from_env(); print('model:', p.config.model); d = p.decide(ModelRequest(task='Reply with a WAIT decision.', data={}, available_tools=(), step=0, max_steps=1)); print('decision:', d.decision_type)"
+```
+
+That proves credentials resolve, the id is accepted, and the response parses into a valid
+`CommanderDecision`. Cost: exactly one call.
+
+Or through the real harness, still without a production mutation — `--max-steps 1` allows
+one Commander decision and at most one governed *read*, then the step budget exhausts and
+the incident escalates. No proposal is raised, so policy never evaluates a mutation, no
+approval is requested, no gate is issued and the executor is never reached:
+
+```powershell
+uv run python run_live_incident.py --model "<candidate-model-id>" --deterministic-specialists --max-steps 1
+```
+
+#### If you make a newer model the default
+
+Change one line — `DEFAULT_GEMINI_MODEL` at `src/aegis/integrations/gemini.py:81`. Nothing
+else is required for it to work.
+
+But note what it costs in evidence: **the two recorded live runs in §1 were made on
+`gemini-2.5-flash`.** Changing the default silently makes those recorded results describe a
+configuration the repository no longer ships. The honest options are to re-run both live
+incidents on the new model and re-record, or to leave the default alone and set the
+environment variable — which is why the default has been left alone here.
+
 ---
 
 ## 4. Two evaluation tracks

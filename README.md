@@ -405,7 +405,7 @@ collapsing them into one number would make every one of them weaker.
 
 | | What it measures | Result | Strength of claim |
 |---|---|---|---|
-| **Unit & integration suite** | every contract, boundary and invariant | **3888 passed**, 0 failed, 0 skipped | deterministic, reproducible |
+| **Unit & integration suite** | every contract, boundary and invariant | **4052 passed**, 0 failed, 0 skipped | deterministic, reproducible |
 | **Governance benchmark** | 302 scenarios across 15 families | **302/302 PASS** | deterministic, reproducible |
 | **Adversarial matrix** | 25 attacks across 8 classes | **25/25 contained** | deterministic, reproducible |
 | **Live Gemini runs** | one real model, two incidents | **2/2 `RESOLVED` + `VERIFIED`** | **two observations, not a rate** |
@@ -419,7 +419,7 @@ them; the deterministic Commander is rule-based and the whole suite passes with 
 actively blocked from importing, verified in a subprocess rather than assumed.
 
 ```text
-uv run pytest                    3888 passed in ~62s
+uv run pytest                    4052 passed in ~69s
 uv run python run_benchmark.py   302 scenarios, 302 passed, 0 failed, runtime ~7s
 ```
 
@@ -573,7 +573,7 @@ Three commands. No credentials, no network, no model, no third-party package bey
 extras. Each exits `0` on success and non-zero on failure, so any of them can gate a build.
 
 ```bash
-uv run pytest                             # 3888 tests            ~62s
+uv run pytest                             # 4052 tests            ~69s
 uv run python run_benchmark.py            # 302 scenarios         ~7s
 uv run python run_adversarial_report.py   # 25 attacks            ~3s
 ```
@@ -660,6 +660,55 @@ Expect one benign `google-genai` AFC warning per process; it is
 
 No command in this repository writes a credential anywhere, and none is stored in it.
 
+### Serving it over HTTP, and deploying to Cloud Run
+
+A thin HTTP surface lets a container serve the control plane. It adds no governance and
+removes none: `POST /incident` reaches the enterprise through the same
+`run_live_incident()` entrypoint the CLI uses, wired to the same orchestrator the benchmark
+drives. There is no route that reaches the executor, and no request field that names a
+capability, an agent, an approval or a gate.
+
+```bash
+uv run python run_service.py --check      # build the service, print /health, bind nothing
+uv run python run_service.py              # serve on $PORT (default 8080)
+```
+
+```bash
+curl -s http://127.0.0.1:8080/health | jq .
+
+curl -s -X POST http://127.0.0.1:8080/incident   -H 'Content-Type: application/json'   -d '{"source": "monitoring.alerting: payment-api error rate 37% since deployment v4.8"}' | jq .
+```
+
+A governed run answers `200` with `"governed": true`, `"verification": "VERIFIED"` and
+`"gates_consumed": 1`. Send `{"approve": false}` and nothing executes and nothing resolves.
+Send the Part 6.A injection payload as the `source` and the governance path is identical to
+the honest one.
+
+The service is **deterministic by default** — no credentials, no network call, no spend.
+Calling a real Gemini model needs two independent conditions (`AEGIS_SERVICE_ALLOW_LIVE=true`
+*and* configured credentials); without both, `{"mode": "live"}` is a `409` and no client is
+constructed.
+
+```bash
+docker build -t aegis:local .                  # runtime image, 312 MB
+docker run --rm -p 8080:8080 aegis:local
+curl -s http://localhost:8080/health | jq .
+```
+
+The image is built from `uv.lock` rather than a fresh resolve, so two builds install the
+same versions. It runs as a non-root user, honours `$PORT`, and carries no test tooling;
+`docker build --target test -t aegis:test .` adds pytest and ruff for running the suite
+inside the image.
+
+**Verified locally:** the image builds, starts healthy, serves all three endpoints, runs a
+governed incident to `VERIFIED`, honours `PORT`, and passes 302/302 benchmark scenarios and
+25/25 adversarial attacks in-container; the test target passes all 4052 tests and ruff.
+
+[**`docs/DEPLOYMENT.md`**](docs/DEPLOYMENT.md) has the Cloud Run commands, the full request
+path, the security caveats for a public deployment, troubleshooting for Docker Hub pull
+failures, and — stated plainly — which parts have actually been executed and which have
+not. The one that matters most: **no Cloud Run deployment has been performed.**
+
 ### Where to read next
 
 | Document | What it covers |
@@ -667,5 +716,6 @@ No command in this repository writes a credential anywhere, and none is stored i
 | [`claude.md`](claude.md) | the project constitution — read this first |
 | [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) | repository layout, every subsystem, how to run things |
 | [`docs/PROVIDER.md`](docs/PROVIDER.md) | the model boundary, the live runs, and their limits |
+| [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) | the HTTP surface, Docker, Cloud Run, and what is actually Google |
 | [`docs/A2A.md`](docs/A2A.md) | agent-to-agent messaging and the remote security boundary |
 | [`docs/CONTROL_CENTER.md`](docs/CONTROL_CENTER.md) | the operator read model |
