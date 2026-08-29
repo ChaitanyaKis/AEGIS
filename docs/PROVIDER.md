@@ -45,28 +45,62 @@ Reproducible, offline, no credentials, no network.
 
 **The Commander path, on Vertex AI, with `gemini-2.5-flash`.**
 
-Two incidents have been driven end to end by a real Gemini model through the unchanged
+Incidents have been driven end to end by a real Gemini model through the unchanged
 governance path, with `--deterministic-specialists` so that exactly one model was the
-variable under test:
+variable under test. **One of those runs is committed**, so this section can be checked
+rather than believed:
 
-| Run | Incident | Outcome |
-|---|---|---|
-| normal | the golden incident | `RESOLVED` + `VERIFIED` |
-| injection | the Part 6.A adversarial incident | `RESOLVED` + `VERIFIED` |
+| Run | Incident | Outcome | Artifact |
+|---|---|---|---|
+| normal | the golden incident | `RESOLVED` + `VERIFIED` | [`docs/evidence/`](evidence/) |
+| injection | the Part 6.A adversarial incident | `RESOLVED` + `VERIFIED` | not committed |
 
-The honest wording, now that it has been run:
+The honest wording:
 
 > **Gemini provider implemented, shape-verified against the installed SDK, and
-> live-verified on the Commander path. Two runs. Not a reliability claim.**
+> live-verified on the Commander path, with one run committed as an artifact. Not a
+> reliability claim.**
 
 Still not "AEGIS is reliable with Gemini". What may be said is that the transport works,
 that the governance path is unchanged by a real model being in the loop, and that on the
-two occasions it was run the incident resolved through policy, a human approval, a spent
-gate and an independent verification.
+occasions it was run the incident resolved through policy, a human approval, a spent gate
+and an independent verification.
 
-The specialist path (`GeminiSpecialistModel`) has **not** been run live. Both trials used
+The specialist path (`GeminiSpecialistModel`) has **not** been run live. Every trial used
 deterministic specialists on purpose: with five live models the run has five variables and
 a failure tells you nothing about which one moved.
+
+### Three kinds of provider evidence, kept apart
+
+They are easy to conflate and they prove very different things. Only the third one
+establishes that a real model was reached.
+
+| | What runs | What it proves | Where |
+|---|---|---|---|
+| **1. Offline construction** | A real `genai.Client` is built through AEGIS's own path with a placeholder key. The SDK client is lazy, so nothing is contacted. | The wiring is real: arguments accepted, client exists, `generate_content` is there to be called. | `tests/integrations/test_sdk_shape.py::TestRealClientConstruction`, `tests/service/test_composition.py::test_the_live_branch_really_builds_a_gemini_commander` |
+| **2. Blocked-network containment** | The real live composition runs with sockets blocked, so the provider genuinely fails. | The failure is contained: `TRANSPORT` / `ModelUnavailable`, `MODEL_FAILURE`, no gate, no execution, no resolution, HTTP `200`, audit intact. | `tests/service/test_incident.py::test_the_live_route_reaches_the_real_provider_and_contains_its_failure` |
+| **3. Successful live run** | A real request to a real model, answered. | A model was actually called and the governed path completed: `total_tokens: 12821` reported by the provider, `RESOLVED` + `VERIFIED` behind a spent gate. | **[`docs/evidence/`](evidence/)** — committed report and capture |
+
+Neither 1 nor 2 needs a credential, and neither reaches the network — which is exactly why
+neither is evidence that Gemini works. Only 3 is, and 3 is one observation.
+
+### The committed artifact
+
+[`docs/evidence/`](evidence/) holds two files from a single run of the production CLI:
+
+* `live-gemini-commander-report.json` — `LiveRunReport.as_json()`. Numbers, enum values,
+  identifiers and digests. No prompt text, no response text, no credentials, no endpoints,
+  no project identity.
+* `live-gemini-commander-decisions.jsonl` — the `--capture` file. Response text only;
+  requests appear as SHA-256 digests, because a request carries the incident payload and a
+  capture file is exactly the kind of artifact that ends up in a repository.
+
+The strongest single line in it is `total_tokens: 12821`: a provider-reported count, which
+cannot be obtained without a real response. The second strongest is the route — four tool
+calls, then `diagnostic`, then `remediation`, skipping `security` and `business-impact`.
+That is not the path the deterministic model takes, and not a path anyone would author.
+
+[`docs/evidence/README.md`](evidence/README.md) states what it does and does not establish.
 
 ### What the first live run found
 
