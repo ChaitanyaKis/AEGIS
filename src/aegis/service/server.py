@@ -18,16 +18,26 @@ would be read back later by something that trusts it.
 from __future__ import annotations
 
 import os
+import signal
 import sys
+import threading
 import time
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from socketserver import BaseServer
 from typing import Any
 
 from aegis.service.app import AegisService, ServiceResponse
 
-__all__ = ["DEFAULT_PORT", "build_server", "make_handler", "port_from_env", "serve"]
+__all__ = [
+    "DEFAULT_PORT",
+    "build_server",
+    "make_handler",
+    "port_from_env",
+    "serve",
+    "shutdown_on_sigterm",
+]
 
 DEFAULT_PORT = 8080
 """Cloud Run's default contract. ``$PORT`` overrides it and is what Cloud Run actually sets."""
@@ -162,17 +172,67 @@ def build_server(
     return ThreadingHTTPServer((host, port), make_handler(service))
 
 
+@contextmanager
+def shutdown_on_sigterm(server: ThreadingHTTPServer) -> Iterator[None]:
+    """Stop *server* cleanly when SIGTERM arrives; restore the previous handler on exit.
+
+    Cloud Run terminates an instance by sending SIGTERM and then waiting out a short grace
+    period. Python's default disposition for SIGTERM kills the process outright, so the
+    ``finally`` that closes the listening socket never runs and any request still in flight
+    is cut mid-response. Asking the server to stop instead lets ``serve_forever`` return
+    normally, which drains the accept loop and closes the socket on the way out.
+
+    The handler does **not** call :meth:`~socketserver.BaseServer.shutdown` itself.
+    ``shutdown()`` blocks until ``serve_forever()`` has returned, and on the main thread the
+    handler runs *inside* ``serve_forever()`` — it would be waiting for a loop that cannot
+    make progress until the handler returns, which is a deadlock rather than a shutdown. A
+    short-lived thread does the waiting instead.
+
+    SIGINT is deliberately left alone. It already raises :class:`KeyboardInterrupt`, which
+    :func:`serve` catches and turns into the same clean close, and installing a handler for
+    it would replace working behaviour to no benefit.
+    """
+    stopping = threading.Event()
+
+    def _request_shutdown(signum: int, frame: Any) -> None:
+        # Idempotent: a supervisor that sends SIGTERM twice gets one shutdown, not two
+        # threads racing to stop the same server.
+        if stopping.is_set():
+            return
+        stopping.set()
+        print("aegis.service received SIGTERM, shutting down", file=sys.stderr)
+        threading.Thread(target=server.shutdown, name="aegis-shutdown", daemon=True).start()
+
+    try:
+        previous = signal.signal(signal.SIGTERM, _request_shutdown)
+    except ValueError:
+        # Python only allows handlers to be installed from the main thread. A server run on
+        # a worker thread keeps the process default, which is exactly what it had before —
+        # degraded, never broken.
+        yield
+        return
+    try:
+        yield
+    finally:
+        # ``getsignal`` returns None for a handler set outside Python, and passing None back
+        # is a TypeError rather than a restore.
+        if previous is not None:
+            signal.signal(signal.SIGTERM, previous)
+
+
 def serve(service: AegisService, *, host: str = "0.0.0.0", port: int = DEFAULT_PORT) -> None:
-    """Bind and serve until interrupted."""
+    """Bind and serve until interrupted or terminated."""
     server = build_server(service, host=host, port=port)
     bound_host, bound_port = server.server_address[:2]
     print(f"aegis.service listening on http://{bound_host}:{bound_port}", file=sys.stderr)
     try:
-        server.serve_forever()
+        with shutdown_on_sigterm(server):
+            server.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
         server.server_close()
+        print("aegis.service stopped", file=sys.stderr)
 
 
 def _refusal(status: int, code: str, detail: str) -> ServiceResponse:
