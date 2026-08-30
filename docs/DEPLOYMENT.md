@@ -60,12 +60,22 @@ The image has been built and run. Measured, not assumed:
 
 ### Deployed
 
-Two Cloud Run services, in project `project-7cc6dce8-b831-4aee-bcb`, region `us-central1`:
+Two Cloud Run services in `us-central1`:
 
 | Service | Role | URL |
 |---|---|---|
-| `aegis` | the governed control plane | `https://aegis-267894367773.us-central1.run.app` |
-| `aegis-ui` | the Control Center dashboard | `https://aegis-ui-267894367773.us-central1.run.app` |
+| `aegis` | the governed control plane | `https://aegis-<PROJECT_NUMBER>.us-central1.run.app` |
+| `aegis-ui` | the Control Center dashboard | `https://aegis-ui-<PROJECT_NUMBER>.us-central1.run.app` |
+
+The concrete hostnames are deliberately not published here. The deployment is
+`--allow-unauthenticated` with live Gemini enabled, so every request to it costs a real
+model call — a URL in a public repository is an open invitation to spend someone else's
+budget. Recover your own with:
+
+```powershell
+gcloud run services describe aegis --region us-central1 --format "value(status.url)"
+gcloud run services describe aegis-ui --region us-central1 --format "value(status.url)"
+```
 
 Exercised against the deployed services, not locally:
 
