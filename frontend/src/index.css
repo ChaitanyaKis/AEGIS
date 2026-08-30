@@ -1,0 +1,50 @@
+/* Global styles for the AEGIS Control Center.
+ *
+ * Order matters: Tailwind first so `@theme` in theme.css is registered against it, then
+ * the handful of base rules that utilities cannot express.
+ */
+
+@import 'tailwindcss';
+@import './theme.css';
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Tabular figures everywhere a number is compared against another number. Without this
+ * the digits in a metric column jitter as values change, which reads as the layout being
+ * unstable rather than the value being different. */
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-bg);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-line);
+  border-radius: 6px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-faint);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
