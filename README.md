@@ -189,6 +189,43 @@ invoked by any shipped composition yet.**
 
 ## 🏗️ Architecture
 
+![AEGIS architecture — untrusted input, the AI agent layer, the six-stage control plane, governed tools, the simulated enterprise, and the hash-chained audit log](docs/images/architecture.png)
+
+<details>
+<summary><b>How this diagram maps to the code</b> — implemented vs. illustrative</summary>
+
+<br>
+
+The **control plane spine is exact.** Policy evaluation → human approval → single-use
+execution gate → action execution → independent verification → hash-chained audit is
+precisely what `IncidentOrchestrator` drives, in that order, and the benchmark measures it.
+So is the build-and-deploy banner: Gemini 3.5 Flash via Vertex AI, the Google Gen AI SDK,
+Cloud Run, Cloud Build, Artifact Registry, IAM.
+
+Three blocks are drawn **generically**, as the shape a deployment would take rather than
+this build's contents:
+
+| Diagram block | This build |
+|---|---|
+| Specialist agents — *Forensic / Log / Threat Intel / System Analyst* | **Diagnostic, Security, Business Impact, Remediation** |
+| Governed tool layer — *Log Search, Endpoint Query, File Hash Check, Network Lookup, User Lookup* | **`get_service_health`, `get_metrics`, `get_recent_deployments`, `get_dependency_health`** |
+| Simulated enterprise — *Systems, Users, Network, Applications, Data Stores* | **API Gateway, Auth, Payment API + DB, Order Service + DB, Notification** |
+
+Two blocks are **not implemented and not claimed**:
+
+- **External services** (Threat Intelligence Feeds, VirusTotal, IP/Domain Reputation) —
+  AEGIS integrates with no external service. Nothing in the codebase makes such a call.
+- **Observability & Monitoring** — the OpenTelemetry span tree exists as a module but no
+  shipped composition invokes it. See [Scope](#-scope--honest-limitations).
+
+The ASCII diagram below describes exactly what runs today, and the
+[Governance](#-governance-model) and [Agent Fleet](#-governed-agent-registry) screenshots
+show the real fleet and tool set read live from the running service.
+
+</details>
+
+<br>
+
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
 │                         AGENT PLANE  (proposes)                      │
