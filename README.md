@@ -32,6 +32,16 @@ Verification establishes truth.
 
 </div>
 
+<div align="center">
+
+![AEGIS Control Center — one incident rendered as the chain of boundaries it passed through](docs/images/control-center-incident.png)
+
+<sub><b>One incident, rendered as the boundaries it passed through.</b> Policy required approval, a
+human granted it, one gate was issued and spent, execution changed the world, and independent
+verification established that it worked — each stage read off a field the control plane decided.</sub>
+
+</div>
+
 ---
 
 ## 🔗 Project Links
@@ -295,6 +305,14 @@ MEMORY        ≠   PERMISSION
 IDENTITY      ≠   AUTHORIZATION
 ```
 
+![Governance — proposal authority, delegation matrix and the complete Commander tool set](docs/images/control-center-governance.png)
+
+<sub><b>The authority configuration the running service enforces</b>, projected live from
+<code>/health</code> — not a copy maintained in the dashboard. Note that
+<code>production.rollback</code> is proposable by <code>remediation</code> alone, and that
+every specialist row reads <i>may delegate to nobody</i>: that is what stops a chain of
+specialists from reaching the one agent with proposal authority.</sub>
+
 ---
 
 ## 🤖 Governed Agent Registry
@@ -331,6 +349,13 @@ eligibility before any specialist runs — the integration point is on the real 
 path, not a side demo. But `run_service.py`, `run_live_incident.py` and the evaluation
 runner all construct `SpecialistRegistry(...)` **without** it. Registry enforcement is
 therefore available and tested (9 tests), and **not active in the default composition**.
+
+![Agent fleet — delegation edges and proposal authority for each of the five agents](docs/images/control-center-fleet.png)
+
+<sub><b>Least privilege, made visible.</b> Four of the five agents carry
+<i>no mutation authority</i>, and the Commander — the agent that orchestrates everything —
+is one of them. Only <code>remediation</code> may propose <code>production.rollback</code>,
+and proposing is still four boundaries away from doing.</sub>
 
 ---
 
@@ -475,8 +500,12 @@ is read off a field the control plane already decided.
 enforcement chain) · Governance (proposal authority, delegation matrix, Commander tools) ·
 Agent Fleet (delegation edges and proposal authority per agent).
 
-<!-- Screenshots: add PNGs to docs/images/ and embed them here.
-     e.g. ![Control Center — enforcement chain](docs/images/control-center.png) -->
+![Overview — service posture, the governance pipeline, declared resources and operational limits](docs/images/control-center-overview.png)
+
+<sub><b>Overview.</b> Execution mode, fleet size, the eight-stage pipeline the service
+implements, and the standing <code>SIMULATED ENTERPRISE</code> badge that never leaves the
+header — because a governance demo that lets you forget the enterprise is synthetic is a
+governance demo that is misleading you.</sub>
 
 ---
 
