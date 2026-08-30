@@ -81,7 +81,9 @@ class InputSecurityVerdict(DomainModel):
         return self.decision is InputSecurityDecision.BLOCK
 
     @classmethod
-    def allow(cls, *, provider: str, reason: str = "content passed screening") -> InputSecurityVerdict:
+    def allow(
+        cls, *, provider: str, reason: str = "content passed screening"
+    ) -> InputSecurityVerdict:
         return cls(decision=InputSecurityDecision.ALLOW, reason=reason, provider=provider)
 
     @classmethod

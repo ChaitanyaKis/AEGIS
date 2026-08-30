@@ -1,0 +1,16 @@
+# node_modules is reinstalled from the lockfile inside the image; uploading it would send
+# hundreds of megabytes of host-platform binaries that the build then ignores.
+node_modules
+dist
+.probe*.json
+.live*.json
+.g3*.json
+.g35*.json
+
+.git
+.gitignore
+README.md
+*.log
+.DS_Store
+.vscode
+.idea

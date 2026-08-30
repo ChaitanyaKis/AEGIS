@@ -39,7 +39,10 @@ from __future__ import annotations
 import re
 from typing import Protocol, runtime_checkable
 
-from aegis.input_security.verdict import InputSecurityCategory, InputSecurityDecision, InputSecurityVerdict
+from aegis.input_security.verdict import (
+    InputSecurityCategory,
+    InputSecurityVerdict,
+)
 
 __all__ = [
     "DeterministicInputSecurity",
@@ -84,12 +87,23 @@ class InputSecurityProvider(Protocol):
 
 # Prompt injection: patterns that attempt to hijack instruction-following.
 _INJECTION_PATTERNS: list[re.Pattern[str]] = [
-    re.compile(r"\bignore\s+(all\s+)?(previous|prior|above|earlier)\s+(instructions?|prompts?|rules?|context)\b", re.IGNORECASE),
+    re.compile(
+        r"\bignore\s+(all\s+)?(previous|prior|above|earlier)"
+        r"\s+(instructions?|prompts?|rules?|context)\b",
+        re.IGNORECASE,
+    ),
     re.compile(r"\bnow\s+(you\s+are|act\s+as|pretend\s+to\s+be|become)\b", re.IGNORECASE),
     re.compile(r"\b(system\s+prompt|system\s+message)\s*[:=]", re.IGNORECASE),
     re.compile(r"<\s*/?system\s*>", re.IGNORECASE),
-    re.compile(r"\bforget\s+(everything|all)\s+(you\s+)?(were\s+)?(told|instructed|trained)\b", re.IGNORECASE),
-    re.compile(r"\byour\s+(new|real|true|actual)\s+(instructions?|purpose|goal|role|task)\s+(is|are)\b", re.IGNORECASE),
+    re.compile(
+        r"\bforget\s+(everything|all)\s+(you\s+)?(were\s+)?(told|instructed|trained)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\byour\s+(new|real|true|actual)"
+        r"\s+(instructions?|purpose|goal|role|task)\s+(is|are)\b",
+        re.IGNORECASE,
+    ),
     re.compile(r"\bDAN\s+mode\b", re.IGNORECASE),
     re.compile(r"\bjailbreak\b", re.IGNORECASE),
     re.compile(r"\b(execute|run|eval)\s*\(\s*['\"]", re.IGNORECASE),
@@ -97,15 +111,23 @@ _INJECTION_PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"---+\s*(SYSTEM|HUMAN|ASSISTANT|USER|INSTRUCTION)", re.IGNORECASE),
     re.compile(r"###\s*(SYSTEM|NEW INSTRUCTION|OVERRIDE)", re.IGNORECASE),
     # Role-play override attempts
-    re.compile(r"\byou\s+(must|should|will|shall)\s+(now\s+)?(ignore|disregard|forget)\b", re.IGNORECASE),
+    re.compile(
+        r"\byou\s+(must|should|will|shall)\s+(now\s+)?(ignore|disregard|forget)\b", re.IGNORECASE
+    ),
 ]
 
 # Policy violations: content that should not enter a production governance system.
 _POLICY_PATTERNS: list[re.Pattern[str]] = [
     # Attempts to exfiltrate data through the incident payload
-    re.compile(r"\b(exfiltrate|exfiltration|steal|leak)\s+(all\s+)?(data|credentials?|secrets?|keys?|tokens?)\b", re.IGNORECASE),
+    re.compile(
+        r"\b(exfiltrate|exfiltration|steal|leak)\s+(all\s+)?(data|credentials?|secrets?|keys?|tokens?)\b",
+        re.IGNORECASE,
+    ),
     # Commands that could be confused for legitimate orchestration
-    re.compile(r"\b(grant|give|add)\s+(yourself|itself|the\s+agent)\s+(admin|root|sudo|superuser)\s+(access|privileges?|rights?)\b", re.IGNORECASE),
+    re.compile(
+        r"\b(grant|give|add)\s+(yourself|itself|the\s+agent)\s+(admin|root|sudo|superuser)\s+(access|privileges?|rights?)\b",
+        re.IGNORECASE,
+    ),
 ]
 
 
@@ -202,7 +224,7 @@ class PassThroughInputSecurity:
     def name(self) -> str:
         return self._PROVIDER_NAME
 
-    def screen(self, content: str) -> InputSecurityVerdict:  # noqa: ARG002
+    def screen(self, content: str) -> InputSecurityVerdict:
         return InputSecurityVerdict.allow(
             provider=self._PROVIDER_NAME,
             reason="pass-through provider: no screening applied",
@@ -273,9 +295,7 @@ class ModelArmorInputSecurity:
             )
             response = self._client.sanitize_user_prompt(request=request)
             # Model Armor uses a filter_match_state to indicate violations
-            match_state = getattr(
-                response.sanitization_result, "filter_match_state", None
-            )
+            match_state = getattr(response.sanitization_result, "filter_match_state", None)
             if match_state is not None and str(match_state) != "NO_MATCH":
                 return InputSecurityVerdict.block(
                     provider=self._PROVIDER_NAME,

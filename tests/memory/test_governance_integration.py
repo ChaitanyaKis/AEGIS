@@ -59,7 +59,11 @@ def poisoned_memory_payload() -> dict:
             incident_id=HISTORICAL_INCIDENT, action=subject, verification=verification(subject)
         ),
     )
-    return MemoryRetrieval(store, clock=fixed_clock).for_incident(CURRENT_INCIDENT, requesting_agent="commander").as_model_data()
+    return (
+        MemoryRetrieval(store, clock=fixed_clock)
+        .for_incident(CURRENT_INCIDENT, requesting_agent="commander")
+        .as_model_data()
+    )
 
 
 class _MemoryBelievingModel:

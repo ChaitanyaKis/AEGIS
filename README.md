@@ -9,11 +9,30 @@ A governed control plane for autonomous enterprise agent fleets.
 See [`claude.md`](claude.md) for the project constitution and [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md)
 for repository layout and how to run the tests.
 
+## Live deployment
+
+| | |
+|---|---|
+| **Control Center** | **https://aegis-ui-267894367773.us-central1.run.app** |
+| Control plane API | https://aegis-267894367773.us-central1.run.app |
+
+Both run on Cloud Run in `us-central1`. The Commander is driven by **Gemini 3.5 Flash**
+through **Vertex AI**, using the **Google Gen AI SDK** (`google-genai`); the four
+specialists remain deterministic so that exactly one model is the variable under test.
+
+Open the Control Center, run the golden incident with the approval selector on **Approve**,
+then run it again on **Refuse**. The second run stops at `PLAN_PROPOSED` with **zero gates
+issued** and nothing executed. That difference is the entire thesis.
+
+The enterprise behind it is a deterministic simulator (`claude.md` section 14). Nothing
+here manages real infrastructure.
+
 ## Status
 
 **Complete and evaluated.** The vertical slice `claude.md` section 27 defines runs end to
 end, deterministically, and has been measured three ways — a 302-scenario governance
-benchmark, a 25-attack adversarial matrix, and two live runs against a real Gemini model.
+benchmark, a 25-attack adversarial matrix, and live runs against a real Gemini model on
+Cloud Run.
 
 Jump to [**Evaluation Results**](#evaluation-results) for the numbers and, more
 importantly, for what each of them does and does not establish.

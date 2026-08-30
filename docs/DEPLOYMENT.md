@@ -29,8 +29,10 @@ They are never blurred, and nothing is promoted a tier because it would read bet
 | Full suite inside the image | **LIVE-VERIFIED (locally)** | `--target test`: 4052 passed, ruff clean |
 | Google GenAI SDK (`google-genai`) | **LIVE-VERIFIED** | two recorded Commander runs, `docs/PROVIDER.md` |
 | Vertex AI inference | **LIVE-VERIFIED** | those two runs went through Vertex AI |
-| Live mode from the deployed service | **CONFIGURED** | wired and gated; never exercised from a container |
-| Cloud Run deployment | **NOT YET VERIFIED** | commands below are untested against a real project |
+| Live mode from the deployed service | **LIVE-VERIFIED** | real Gemini 3.5 incidents served from Cloud Run |
+| Cloud Run deployment | **LIVE-VERIFIED** | two services deployed and exercised — see [Deployed](#deployed) |
+| Control Center dashboard | **LIVE-VERIFIED** | `aegis-ui`, static SPA + same-origin `/api` proxy |
+| Cloud Build / Artifact Registry | **LIVE-VERIFIED** | both images built by `gcloud run deploy --source .` |
 | Google ADK | **not used** | not a dependency, not imported, not claimed |
 | Agent Registry, Model Armor, Agent Engine | **ARCHITECTURAL INTENT** | `claude.md` section 18 names the abstraction points; no integration exists |
 | GKE, Pub/Sub, Firestore, Cloud SQL, Memorystore | **not used** | no code touches any of them |
@@ -56,15 +58,31 @@ The image has been built and run. Measured, not assumed:
 | `--target test` ruff | check + format clean |
 | Installed versions vs `uv.lock` | exact match on every package |
 
-### Honest status
+### Deployed
 
-**No Cloud Run deployment has been performed.** The `gcloud` commands below are written
-from the documented interface, not transcribed from a successful run. Nothing in this
-repository, this document, or the service's own output claims a deployment happened.
+Two Cloud Run services, in project `project-7cc6dce8-b831-4aee-bcb`, region `us-central1`:
 
-**Live Gemini has never been called from a container.** The provider itself is
-live-verified from the command line (`docs/PROVIDER.md`); the *path from a deployed service
-to it* is wired and gated but has not been exercised.
+| Service | Role | URL |
+|---|---|---|
+| `aegis` | the governed control plane | `https://aegis-267894367773.us-central1.run.app` |
+| `aegis-ui` | the Control Center dashboard | `https://aegis-ui-267894367773.us-central1.run.app` |
+
+Exercised against the deployed services, not locally:
+
+| Check | Result |
+|---|---|
+| `GET /health` | `200`, `live_mode.available: true` |
+| Live incident, approved | `RESOLVED`, `REQUIRE_APPROVAL`, gate 1/1 spent, `VERIFIED`, audit valid |
+| Live incident, refused | `APPROVAL_REJECTED`, **0 gates**, nothing executed, world unchanged |
+| Model | `gemini-3.5-flash` on Vertex AI, ~10–14k provider-reported tokens per incident |
+| Dashboard SPA routes | `/`, `/overview`, `/incidents`, `/governance`, `/fleet` all `200` |
+| Dashboard `→` service | `GET /api/health` `200` through the container's own nginx proxy |
+
+**What is still not claimed.** Live mode drives the **Commander only** — the four
+specialists remain deterministic stand-ins, so one model is the variable under test and
+`GeminiSpecialistModel` has never run live. A handful of successful runs is a handful of
+observations, not a reliability claim. And the enterprise behind it is still the
+simulator: nothing here manages real infrastructure.
 
 ## What Google Cloud is actually used for
 
@@ -449,7 +467,7 @@ which is exactly what a slim image should do, and that was confirmed by a succes
 
 ## Deploy to Cloud Run
 
-> Untested against a real project. Read [Honest status](#honest-status) first.
+Transcribed from the deploy that produced the services in [Deployed](#deployed).
 
 ### One-time setup
 
@@ -458,6 +476,26 @@ gcloud auth login
 gcloud config set project YOUR_PROJECT_ID
 gcloud services enable run.googleapis.com artifactregistry.googleapis.com cloudbuild.googleapis.com
 ```
+
+#### Grant the runtime service account access to Vertex AI
+
+**Do this before deploying with live mode on, or every live call returns 403.** Cloud Run
+runs as the default compute service account, which by default holds only `logWriter` and
+`objectViewer` — nothing that can reach Vertex AI. This was not obvious from a failed
+request: the service starts fine, `/health` reports live mode available, and the failure
+appears only when a model is actually called.
+
+```powershell
+$proj = "YOUR_PROJECT_ID"
+$num  = gcloud projects describe $proj --format="value(projectNumber)"
+gcloud projects add-iam-policy-binding $proj `
+  --member="serviceAccount:$num-compute@developer.gserviceaccount.com" `
+  --role="roles/aiplatform.user" --condition=None
+```
+
+`roles/aiplatform.user` is the minimum that works. A dedicated service account with only
+that role is better than the default compute one; the default is used here because it is
+what an unmodified project already has.
 
 ### Deploy from source (Cloud Build does the image)
 
@@ -506,19 +544,74 @@ A governed run answers `200` with `"governed": true`, `"verification": "VERIFIED
 
 ### Enabling live Gemini on the deployed service
 
-This costs money on every request. It is off unless you turn it on.
+This costs money on every request. It is off unless you turn it on, and the
+[IAM grant](#grant-the-runtime-service-account-access-to-vertex-ai) must already be in
+place or every call returns 403.
 
 ```powershell
 gcloud run services update aegis --region us-central1 `
-  --set-env-vars AEGIS_SERVICE_ALLOW_LIVE=true,GOOGLE_GENAI_USE_VERTEXAI=true,GOOGLE_CLOUD_PROJECT=YOUR_PROJECT_ID,GOOGLE_CLOUD_LOCATION=us-central1
+  --set-env-vars "AEGIS_SERVICE_ALLOW_LIVE=true,GOOGLE_GENAI_USE_VERTEXAI=true,GOOGLE_CLOUD_PROJECT=YOUR_PROJECT_ID,GOOGLE_CLOUD_LOCATION=global,AEGIS_GEMINI_MODEL=gemini-3.5-flash,AEGIS_GEMINI_TIMEOUT_SECONDS=120"
 ```
 
-The service's runtime service account needs Vertex AI access:
+Three of those values are load-bearing and easy to get wrong:
+
+- **`GOOGLE_CLOUD_LOCATION=global`.** Every Gemini model newer than 2.5 is reachable only
+  from the `global` location in this project. Pointing at `us-central1` with a 3.5 model id
+  produces `ModelUnavailable` — fail-closed and correct, but the location is the part that
+  looks unrelated to the error.
+- **`--timeout` on the service must exceed the model time.** A live incident is roughly
+  30–40 s of model latency; the deployed service runs with `--timeout 300`.
+- **`AEGIS_GEMINI_TIMEOUT_SECONDS`** is the provider's own deadline and should sit below
+  the Cloud Run request timeout, so a slow model surfaces as a recorded `MODEL_FAILURE`
+  rather than as a truncated HTTP response.
+
+To turn live mode back off — every governance path still works, at zero model cost:
 
 ```powershell
-gcloud projects add-iam-policy-binding YOUR_PROJECT_ID `
-  --member "serviceAccount:YOUR_RUNTIME_SA@YOUR_PROJECT_ID.iam.gserviceaccount.com" `
-  --role roles/aiplatform.user
+gcloud run services update aegis --region us-central1 --remove-env-vars AEGIS_SERVICE_ALLOW_LIVE
+```
+
+## Deploy the Control Center dashboard
+
+The dashboard (`frontend/`) is a separate Cloud Run service: an nginx image serving the
+built SPA, with `/api` reverse-proxied to the AEGIS service.
+
+**The proxy is the point.** The two services sit on different origins, and the AEGIS
+service deliberately sends no CORS headers. Proxying inside the dashboard's own container
+makes every call same-origin, which needs no change to the service and relaxes nothing it
+enforces. It also means `VITE_API_BASE` stays at its default of `/api`, so the bundle is
+not pinned to one backend URL.
+
+```powershell
+cd frontend
+gcloud run deploy aegis-ui `
+  --source . `
+  --region us-central1 `
+  --platform managed `
+  --port 8080 `
+  --memory 512Mi `
+  --cpu 1 `
+  --min-instances 0 `
+  --max-instances 2 `
+  --concurrency 80 `
+  --timeout 300 `
+  --allow-unauthenticated `
+  --set-env-vars "BACKEND_HOST=aegis-XXXXXXXXX.us-central1.run.app"
+```
+
+`BACKEND_HOST` is the AEGIS service's **hostname only** — no scheme, no trailing slash. It
+is substituted into `nginx.conf.template` at container start. Get it with:
+
+```powershell
+(gcloud run services describe aegis --region us-central1 --format "value(status.url)") -replace '^https://',''
+```
+
+### Verify the dashboard
+
+```powershell
+$UI = gcloud run services describe aegis-ui --region us-central1 --format "value(status.url)"
+curl.exe -s -o NUL -w "%{http_code}`n" "$UI/overview"    # 200 — SPA fallback
+curl.exe -s "$UI/api/health"                              # proxied to the AEGIS service
 ```
 
 Then `{"mode": "live"}` becomes available. An API key would work too, but a key set as a

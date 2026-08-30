@@ -203,9 +203,7 @@ class AgentRegistry:
         deployment's identity system's job — but it does record the claim, so an approval
         can never be anonymous.
         """
-        record = self._transition(
-            agent_id, version, RegistryStatus.APPROVED, approver, reason
-        )
+        record = self._transition(agent_id, version, RegistryStatus.APPROVED, approver, reason)
         updated = record.model_copy(
             update={
                 "approval_status": ApprovalStatus.GRANTED,

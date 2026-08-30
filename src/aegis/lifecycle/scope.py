@@ -1,4 +1,4 @@
-"""Resource scope verification: a pre-execution gate on agent × capability × resource.
+"""Resource scope verification: a pre-execution gate on agent x capability x resource.
 
 The question
 ------------
@@ -70,7 +70,7 @@ class ResourceScopeVerdict(DomainModel):
     def __repr__(self) -> str:
         return (
             f"{type(self).__name__}({self.decision} "
-            f"{self.agent_id!r} × {self.capability_id!r} → {self.target_resource!r})"
+            f"{self.agent_id!r} x {self.capability_id!r} → {self.target_resource!r})"
         )
 
 

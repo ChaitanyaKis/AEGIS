@@ -166,7 +166,7 @@ def test_eligibility_verdict_invalid_version() -> None:
         department="engineering",
         identity="service",
     )
-    
+
     verdict = registry.eligibility("remediation", "invalid-version")
     assert not verdict.eligible
     assert verdict.refusal is RegistryRefusal.UNKNOWN_VERSION
@@ -184,7 +184,7 @@ def test_eligibility_verdict_unapproved() -> None:
         identity="service",
     )
     registry.publish("remediation", "1.0.0", actor="ops")
-    
+
     verdict = registry.eligibility("remediation", "1.0.0")
     assert not verdict.eligible
     assert verdict.refusal is RegistryRefusal.NOT_APPROVED
@@ -200,12 +200,12 @@ def test_eligibility_verdict_active() -> None:
         owner="security",
         department="engineering",
         identity="service",
-        capabilities=["production.rollback"]
+        capabilities=["production.rollback"],
     )
     registry.publish("remediation", "1.0.0", actor="ops")
     registry.approve("remediation", "1.0.0", approver="alice")
     registry.activate("remediation", "1.0.0", actor="ops")
-    
+
     verdict = registry.eligibility("remediation", "1.0.0")
     assert verdict.eligible
     assert verdict.refusal is RegistryRefusal.NONE

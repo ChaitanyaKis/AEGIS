@@ -54,15 +54,19 @@ class MemoryRetrieval:
         """
         query = query if query is not None else MemoryQuery()
         now = self._clock()
-        
+
         records = []
         for record in self._store.query(query):
             if record.provenance is None:
                 continue
-            if record.namespace is not None and requesting_agent is not None and record.namespace != requesting_agent:
+            if (
+                record.namespace is not None
+                and requesting_agent is not None
+                and record.namespace != requesting_agent
+            ):
                 continue
             records.append(_as_retrieved(record, now))
-            
+
         return MemoryContext(query=query, records=tuple(records), retrieved_at=now)
 
     def for_incident(

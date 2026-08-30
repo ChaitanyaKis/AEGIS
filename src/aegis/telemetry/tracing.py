@@ -13,7 +13,7 @@ Design principles
    (beyond a size-bounded excerpt), or API keys. The helpers document what they do and do
    not record, so a reader can audit the claim.
 
-4. **Parent–child hierarchy reflects real execution.** The incident span is the root; each
+4. **Parent-child hierarchy reflects real execution.** The incident span is the root; each
    phase (input_security, commander, delegation, policy, approval, gate, execution,
    verification) is a child of it. That is the structure of the real path, not a parallel
    demo.
@@ -46,7 +46,7 @@ __all__ = ["AegisTelemetry", "NoOpSpan", "Span"]
 class Span:
     """A live span. Wraps an OTEL span when available, acts as a no-op when not."""
 
-    __slots__ = ("_span", "_otel")
+    __slots__ = ("_otel", "_span")
 
     def __init__(self, span: Any, *, otel_available: bool) -> None:
         self._span = span
@@ -56,10 +56,13 @@ class Span:
         """Set an attribute. Silently ignored if OTEL is unavailable or the span is a no-op."""
         if not self._otel:
             return
-        try:
-            self._span.set_attribute(key, str(value) if not isinstance(value, (str, bool, int, float)) else value)
-        except Exception:  # noqa: BLE001
-            pass
+        # Attribute setting is best-effort: a span attribute is diagnostic, and a
+        # tracer that rejects one must never break the run it is describing.
+        with contextlib.suppress(Exception):
+            self._span.set_attribute(
+                key,
+                value if isinstance(value, str | bool | int | float) else str(value),
+            )
 
     def set_error(self, exc: BaseException) -> None:
         """Record an exception on the span without re-raising it."""
@@ -67,9 +70,10 @@ class Span:
             return
         try:
             from opentelemetry import trace  # type: ignore[import-not-found]
+
             self._span.set_status(trace.Status(trace.StatusCode.ERROR, str(exc)))
             self._span.record_exception(exc)
-        except Exception:  # noqa: BLE001
+        except Exception:
             pass
 
     def set_ok(self) -> None:
@@ -78,8 +82,9 @@ class Span:
             return
         try:
             from opentelemetry import trace  # type: ignore[import-not-found]
+
             self._span.set_status(trace.Status(trace.StatusCode.OK))
-        except Exception:  # noqa: BLE001
+        except Exception:
             pass
 
     def raw(self) -> Any:
@@ -132,7 +137,9 @@ class AegisTelemetry:
             from opentelemetry import trace  # type: ignore[import-not-found]
             from opentelemetry.sdk.resources import Resource  # type: ignore[import-not-found]
             from opentelemetry.sdk.trace import TracerProvider  # type: ignore[import-not-found]
-            from opentelemetry.sdk.trace.export import SimpleSpanProcessor  # type: ignore[import-not-found]
+            from opentelemetry.sdk.trace.export import (
+                SimpleSpanProcessor,  # type: ignore[import-not-found]
+            )
 
             resource = Resource.create({"service.name": service_name})
             provider = TracerProvider(resource=resource)
@@ -143,7 +150,7 @@ class AegisTelemetry:
         except ImportError:
             # OTEL not installed — all spans are no-ops
             self._tracer = None
-        except Exception:  # noqa: BLE001
+        except Exception:
             self._tracer = None
 
     @property
@@ -166,7 +173,9 @@ class AegisTelemetry:
         yield from self._child_span("aegis.commander", parent, {"step": step})
 
     @contextlib.contextmanager
-    def delegation_span(self, parent: Span, *, target: str, task_type: str) -> Generator[Span, None, None]:
+    def delegation_span(
+        self, parent: Span, *, target: str, task_type: str
+    ) -> Generator[Span, None, None]:
         yield from self._child_span(
             "aegis.delegation", parent, {"target_agent": target, "task_type": task_type}
         )
@@ -199,7 +208,6 @@ class AegisTelemetry:
             yield NoOpSpan()
             return
         try:
-            from opentelemetry import trace  # type: ignore[import-not-found]
             with self._tracer.start_as_current_span(name) as raw:
                 span = Span(raw, otel_available=True)
                 if attrs:
@@ -211,7 +219,7 @@ class AegisTelemetry:
                 except Exception as exc:
                     span.set_error(exc)
                     raise
-        except Exception:  # noqa: BLE001
+        except Exception:
             yield NoOpSpan()
 
     @contextlib.contextmanager
@@ -222,7 +230,6 @@ class AegisTelemetry:
             yield NoOpSpan()
             return
         try:
-            from opentelemetry import context as otel_context  # type: ignore[import-not-found]
             from opentelemetry import trace  # type: ignore[import-not-found]
 
             parent_raw = parent.raw()
@@ -240,7 +247,7 @@ class AegisTelemetry:
                 except Exception as exc:
                     span.set_error(exc)
                     raise
-        except Exception:  # noqa: BLE001
+        except Exception:
             yield NoOpSpan()
 
 

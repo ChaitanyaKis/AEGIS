@@ -1,0 +1,53 @@
+# Serves the built dashboard and proxies its API calls to the AEGIS service.
+#
+# The proxy is the point. The dashboard and the service are two Cloud Run services on two
+# origins, and the AEGIS service deliberately sends no CORS headers — so a browser would
+# refuse a direct cross-origin call. Proxying `/api` here makes every request same-origin,
+# which needs no change to the service and no relaxation of anything it enforces.
+#
+# `${PORT}` and `${BACKEND_HOST}` are substituted at container start by envsubst. They are
+# written in as literals rather than nginx variables on purpose: a variable in `proxy_pass`
+# forces runtime DNS resolution and needs a `resolver` directive, and a literal host is
+# resolved once at startup and fails loudly if it is wrong.
+
+server {
+    listen ${PORT};
+    server_name _;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    gzip on;
+    gzip_types text/css application/javascript application/json image/svg+xml;
+    gzip_min_length 1024;
+
+    # Hashed assets are immutable; index.html must never be cached or a deploy is invisible.
+    location /assets/ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
+    location = /index.html {
+        add_header Cache-Control "no-store";
+    }
+
+    location /api/ {
+        proxy_pass https://${BACKEND_HOST}/;
+        proxy_http_version 1.1;
+        proxy_set_header Host ${BACKEND_HOST};
+        proxy_ssl_server_name on;
+        proxy_set_header X-Forwarded-Proto https;
+
+        # A live incident is ~35 s of model time. The default 60 s read timeout would cut
+        # the slower ones off mid-run and surface as a proxy error rather than a result.
+        proxy_connect_timeout 30s;
+        proxy_send_timeout 300s;
+        proxy_read_timeout 300s;
+    }
+
+    # SPA fallback: /overview, /governance and /fleet are client-side routes with no file
+    # behind them, so anything that is not a real file becomes index.html.
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}

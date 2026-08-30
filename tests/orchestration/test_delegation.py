@@ -45,7 +45,7 @@ from aegis.orchestration import (
     OrchestrationOutcome,
     SpecialistRegistry,
 )
-from aegis.registry import AgentRegistry, AgentVersion
+from aegis.registry import AgentRegistry
 from tests.fleet import FIXED_EVALUATION_TIME
 from tests.orchestration.conftest import (
     INJECTION,
@@ -231,9 +231,9 @@ def test_registry_eligibility_refuses_suspended_specialist() -> None:
     agent_reg.approve("diagnostic", "1.0.0", approver="test")
     agent_reg.activate("diagnostic", "1.0.0", actor="test")
     agent_reg.suspend("diagnostic", "1.0.0", actor="test", reason="security concern")
-    
+
     registry._agent_registry = agent_reg
-    
+
     result = registry.dispatch("commander", "diagnostic", _task(TaskType.DIAGNOSE_SERVICE))
     assert result.outcome is DelegationOutcome.REGISTRY_INELIGIBLE
     assert result.finding is None
@@ -244,7 +244,7 @@ def test_registry_eligibility_refuses_unknown_agent_when_registry_is_present() -
     registry = build_specialists(EnterpriseWorld())
     agent_reg = AgentRegistry()
     registry._agent_registry = agent_reg
-    
+
     # "diagnostic" is in the fleet but not registered in the agent_reg
     result = registry.dispatch("commander", "diagnostic", _task(TaskType.DIAGNOSE_SERVICE))
     assert result.outcome is DelegationOutcome.REGISTRY_INELIGIBLE
@@ -260,7 +260,7 @@ def test_registry_eligibility_allows_approved_agent() -> None:
     agent_reg.approve("diagnostic", "1.0.0", approver="test")
     agent_reg.activate("diagnostic", "1.0.0", actor="test")
     registry._agent_registry = agent_reg
-    
+
     result = registry.dispatch("commander", "diagnostic", _task(TaskType.DIAGNOSE_SERVICE))
     assert result.outcome is DelegationOutcome.COMPLETED
     assert result.finding is not None

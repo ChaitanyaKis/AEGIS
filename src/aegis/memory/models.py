@@ -105,7 +105,9 @@ class MemoryCandidate(DomainModel):
     """One line for a human reading the trail. Never parsed, never matched against."""
 
     namespace: str | None = None
-    """The isolation boundary. Memory written with a namespace is only returned to the same namespace."""
+    """The isolation boundary.
+
+    Memory written with a namespace is only returned to the same namespace."""
 
     supporting_evidence: tuple[EvidenceRef, ...] = Field(default_factory=tuple)
     verification_id: Identifier | None = None
@@ -200,8 +202,10 @@ class MemoryQuery(DomainModel):
     owner_agent: AgentRef | None = None
     """The agent that wrote this memory."""
     namespace: str | None = None
-    """The isolation boundary. Memory written with a namespace is only returned to the same namespace."""
-    
+    """The isolation boundary.
+
+    Memory written with a namespace is only returned to the same namespace."""
+
     limit: int | None = Field(default=None, ge=1)
     """Cap on returned records, applied after deterministic ordering."""
 
